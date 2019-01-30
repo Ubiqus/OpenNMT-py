@@ -74,12 +74,20 @@ def build_torch_optimizer(model, opt):
                  lr=opt.learning_rate,
                  betas=betas,
                  eps=1e-8)])
+    elif opt.optim == 'fusedadam':
+        pass
     else:
         raise ValueError('Invalid optimizer type: ' + opt.optim)
     if opt.model_dtype == 'fp16':
-        import apex  # Make apex dependency optional.
-        optimizer = apex.fp16_utils.FP16_Optimizer(
-            optimizer, dynamic_loss_scale=True)
+        if opt.optim == 'fusedadam':
+            from apex.optimizers import FP16_Optimizer, FusedAdam
+            optimizer = FP16_Optimizer(FusedAdam(params), dynamic_loss_scale=True)
+        elif opt.optim == 'adam':
+            import apex  # Make apex dependency optional.
+            optimizer = apex.fp16_utils.FP16_Optimizer(
+                optimizer, dynamic_loss_scale=True)
+        else:
+            raise ValueError('Invalid optimizer type: ' + opt.optim)
     return optimizer
 
 
@@ -281,7 +289,8 @@ class Optimizer(object):
         """Wrapper for backward pass. Some optimizer requires ownership of the
         backward pass."""
         if self._with_fp16_wrapper:
-            self._optimizer.backward(loss, update_master_grads=False)
+            # self._optimizer.backward(loss, update_master_grads=False)
+            self._optimizer.backward(loss)
         else:
             loss.backward()
 
@@ -293,7 +302,7 @@ class Optimizer(object):
         """
         learning_rate = self.learning_rate()
         if self._with_fp16_wrapper:
-            self._optimizer.update_master_grads()
+            # self._optimizer.update_master_grads()
             if self._max_grad_norm > 0:
                 self._optimizer.clip_master_grads(self._max_grad_norm)
         for group in self._optimizer.param_groups:
